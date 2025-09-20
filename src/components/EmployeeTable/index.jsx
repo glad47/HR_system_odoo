@@ -71,24 +71,22 @@ const EmployeeTable = () => {
     setSelectedEmployee(record);
     setOpen(true);
 
-    const empCode = record.registration_number;
-    const monthName = getCurrentCustomMonth(new Date().getFullYear())?.name || "Unknown";
+    // const empCode = record.registration_number;
+    // const monthName = getCurrentCustomMonth(new Date().getFullYear())?.name || "Unknown";
 
-    // 1. Try cache
-    const cached = getCachedTransactions(empCode, monthName);
-    console.log("cvcvcvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-    console.log(cached)
-    if (cached) {
-      record.transactions = cached
+    // // 1. Try cache
+    // const cached = getCachedTransactions(empCode, monthName);
+    // if (cached) {
+    //   record.transactions = cached
      
-    }else{
-      // 2. Fetch if not cached
-      const tx = await fetchTransactions(session.token, record);
-      record.transactions = tx;
+    // }else{
+    //   // 2. Fetch if not cached
+    //   const tx = await fetchTransactions(session.token, record);
+    //   record.transactions = tx;
 
-      // 3. Save to cache
-      saveTransactionsToCache(empCode, monthName, tx);
-    }
+    //   // 3. Save to cache
+    //   saveTransactionsToCache(empCode, monthName, tx);
+    // }
 
    
   };
@@ -322,60 +320,28 @@ const fetchTransactions = async (authToken, employee) => {
 };
 
 
-const fetchEmployees = async (token,uid, password, page = 1, pageSize = 50) => {
+
+
+const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => {
   setLoading(true);
   try {
     const offset = (page - 1) * pageSize;
 
-
     // Build domain dynamically
-      const domain = [];
-      if (filters.name) {
-        domain.push(["name", "ilike", filters.name]); // case-insensitive match
-      }
-      if (filters.registration_number) {
-        domain.push(["registration_number", "=", filters.registration_number]);
-      }
-      if(filters.department_id){
-         domain.push(["department_id", "=", filters.department_id]);
-      }
+    const domain = [];
+    if (filters.name) {
+      domain.push(["name", "ilike", filters.name]);
+    }
+    if (filters.registration_number) {
+      domain.push(["registration_number", "=", filters.registration_number]);
+    }
+    if (filters.department_id) {
+      domain.push(["department_id", "=", filters.department_id]);
+    }
+    domain.push(["registration_number", "!=", false]);
 
-      domain.push(["registration_number", "!=", false])
-
+    // --- Fetch employees from Odoo
     const response = await axios.post("/jsonrpc", {
-      jsonrpc: "2.0",
-      method: "call",
-      params: {
-        service: "object",
-        method: "execute_kw",
-        args: [
-          "odoo",          // database
-          uid,             // user id from authenticate
-          password,        // password
-          "hr.employee",   // model
-          "search_read",   // method
-          [domain],
-          {
-            fields: ["name", "registration_number", "resource_calendar_id",  "department_id"],
-            offset,
-            limit: pageSize
-          }
-        ]
-      },
-      id: 1
-    });
-
-
-    const employees = response.data.result || [];
-
-    
-
-    
-    setEmployees(employees);
-
-    // ⚠️ Odoo does not return total count with search_read
-    // You need a separate search_count call to get total
-    const countRes = await axios.post("/jsonrpc", {
       jsonrpc: "2.0",
       method: "call",
       params: {
@@ -386,23 +352,80 @@ const fetchEmployees = async (token,uid, password, page = 1, pageSize = 50) => {
           uid,
           password,
           "hr.employee",
-          "search_count",
-          [domain]
-        ]
+          "search_read",
+          [domain],
+          {
+            fields: ["name", "registration_number", "resource_calendar_id", "department_id"],
+            offset,
+            limit: pageSize,
+          },
+        ],
       },
-      id: 2
+      id: 1,
+    });
+
+    const employees = response.data.result || [];
+
+    // --- Attach transactions (cache-first)
+    const monthName = getCurrentCustomMonth(new Date().getFullYear())?.name || "Unknown";
+
+    for (const emp of employees) {
+      const empCode = emp.registration_number;
+
+      // 1. Try cache
+      const cached = getCachedTransactions(empCode, monthName);
+      if (cached) {
+        emp.transactions = cached;
+      } else {
+        // 2. Fetch if not cached
+        try {
+          const txResponse = await axios.get(`/iclock/api/transactions/`, {
+            headers: {
+              Authorization: `Token ${token}`,
+              "Content-Type": "application/json",
+            },
+            params: {
+              emp_code: empCode,
+              page_size: "1000",
+              start_time: filters.day_start_time || filters.night_start_time, // adjust as needed
+              end_time: filters.day_end_time || filters.night_end_time,       // adjust as needed
+            },
+          });
+
+          const txList = txResponse.data.data || [];
+          emp.transactions = txList;
+
+          // 3. Save to cache
+          saveTransactionsToCache(empCode, monthName, txList);
+        } catch (err) {
+          console.error(`Failed to fetch transactions for ${empCode}`, err);
+          emp.transactions = [];
+        }
+      }
+    }
+
+    setEmployees(employees);
+
+    // --- Fetch total count
+    const countRes = await axios.post("/jsonrpc", {
+      jsonrpc: "2.0",
+      method: "call",
+      params: {
+        service: "object",
+        method: "execute_kw",
+        args: ["odoo", uid, password, "hr.employee", "search_count", [domain]],
+      },
+      id: 2,
     });
 
     setTotal(countRes.data.result);
-
-    
-
   } catch (err) {
     console.error("Odoo fetch failed:", err);
   } finally {
     setLoading(false);
   }
 };
+
 
 
 
