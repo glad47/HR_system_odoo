@@ -1,0 +1,56 @@
+
+.container {
+  max-width: 400px;
+  margin: 60px auto;
+  padding: 30px;
+  background-color: #f9f9f9;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  direction: rtl;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.title {
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+  text-align: center;
+  color: #333;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+
+  &:focus {
+    border-color: #007bff;
+    outline: none;
+  }
+}
+
+.button {
+  width: 100%;
+  padding: 12px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: #0056b3;
+  }
+}
+
+.error {
+  color: #d9534f;
+  margin-top: 10px;
+  text-align: center;
+  font-size: 0.95rem;
+}
