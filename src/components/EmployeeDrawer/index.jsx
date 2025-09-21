@@ -1,43 +1,15 @@
 import { Drawer, Tag, Table } from "antd";
+import "./EmployeeDrawer.scss";
 
 const EmployeeDrawer = ({ open, onClose, employee, transactions = [] }) => {
-  // Define table columns for transactions
-
-
-
-const transactionColumns = [
-  {
-    title: "Employee Code",
-    dataIndex: "emp_code",
-    key: "emp_code",
-  },
-  {
-    title: "Punch Time",
-    dataIndex: "punch_time",
-    key: "punch_time",
-  },
-  {
-    title: "Punch State",
-    dataIndex: "punch_state_display",
-    key: "punch_state_display",
-  },
-  {
-    title: "Verify Type",
-    dataIndex: "verify_type_display",
-    key: "verify_type_display",
-  },
-  {
-    title: "Area",
-    dataIndex: "area_alias",
-    key: "area_alias",
-  },
-  {
-    title: "Terminal",
-    dataIndex: "terminal_alias",
-    key: "terminal_alias",
-  },
-];
-
+  const transactionColumns = [
+    { title: "Employee Code", dataIndex: "emp_code", key: "emp_code" },
+    { title: "Punch Time", dataIndex: "punch_time", key: "punch_time" },
+    { title: "Punch State", dataIndex: "punch_state_display", key: "punch_state_display" },
+    { title: "Verify Type", dataIndex: "verify_type_display", key: "verify_type_display" },
+    { title: "Area", dataIndex: "area_alias", key: "area_alias" },
+    { title: "Terminal", dataIndex: "terminal_alias", key: "terminal_alias" },
+  ];
 
   return (
     <Drawer
@@ -48,7 +20,7 @@ const transactionColumns = [
       open={open}
     >
       {employee ? (
-        <div>
+        <div className="employee-drawer">
           <p><strong>ID:</strong> {employee.id}</p>
           <p><strong>Name:</strong> {employee.name}</p>
           <p><strong>Registration Number:</strong> {employee.registration_number || "—"}</p>
@@ -67,15 +39,32 @@ const transactionColumns = [
               : "—"}
           </p>
 
+          {/* Statistics Section */}
+          {employee.statistics && (
+            <div className="statistics">
+              <h3>Statistics</h3>
+              <p><strong>Total Days:</strong> {employee.statistics.totalDays}</p>
+              <p><strong>Full Days:</strong> {employee.statistics.fullDays}</p>
+              <p><strong>Partial Days:</strong> {employee.statistics.partialDays}</p>
+              <p><strong>Absent Days:</strong> {employee.statistics.absentDays}</p>
+              <p><strong>Deduction (Late):</strong> {employee.statistics.deductionLate}</p>
+              <p><strong>Deduction (Absent):</strong> {employee.statistics.deductionAbsent}</p>
+              <p><strong>Borrow:</strong> {employee.statistics.borrow}</p>
+              <p><strong>Net Salary:</strong> {employee.statistics.netSalary}</p>
+            </div>
+          )}
+
           {/* Transactions Table */}
-          <h3 style={{ marginTop: 24 }}>Transactions</h3>
-          <Table
-            columns={transactionColumns}
-            dataSource={transactions}
-            rowKey="id"
-            pagination={false}
-            size="small"
-          />
+          <h3>Transactions</h3>
+          <div className="transactions-table">
+            <Table
+              columns={transactionColumns}
+              dataSource={transactions}
+              rowKey="id"
+              pagination={false}
+              size="small"
+            />
+          </div>
         </div>
       ) : (
         <p>No employee selected</p>

@@ -19,9 +19,9 @@ function Login() {
   const [sessionData, setSessionData] = useState(null);
 
 
-    useEffect(() => {
-        localStorage.removeItem('sessionData');
-    }, [])
+    // useEffect(() => {
+    //     localStorage.removeItem('sessionData');
+    // }, [])
 
 
 

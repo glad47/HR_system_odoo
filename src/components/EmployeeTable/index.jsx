@@ -8,8 +8,8 @@ import { Tag } from "antd";
 import EmployeeDrawer from '../EmployeeDrawer';
 import { getCachedTransactions, saveTransactionsToCache } from "../../utils/transactionCache";
 import {getCurrentCustomMonth} from "../../utils/dateRanges"
-
-
+import { trackAttendanceNightShift, trackAttendanceDayShift } from '../../utils/attendance';
+import { makeTheCalendarInfo } from "../../utils/calendar";
 
 
 
@@ -272,31 +272,139 @@ function getColorForDepartment(name) {
 //   }
 // };
 
-function getEmployeeShiftRanges(employee) {
-    const calendarName = employee?.resource_calendar_id?.[1] || "";
 
-    // Find the current month ranges
 
-    let param = {};
+const getEmployeeStaticInfo = async (token, employee, calendars) =>  {
+  const calendarName = employee?.resource_calendar_id?.[1] || "";
+     // --- Attach transactions (cache-first)
+  const monthName = getCurrentCustomMonth(new Date().getFullYear())?.name || "Unknown";
 
-    if (calendarName.includes("صباحا")) {
-      param.start_time=  dayStartTime;
-      param.end_time = dayEndTime;
 
-    } else if (calendarName.includes("مساءا")) {
-      param.start_time=  nightStartTime;
-      param.end_time = nightEndTime;
-    } else {
-      // fallback to day shift
-      param.start_time=  dayStartTime;
-      param.end_time = dayEndTime;
+  let param = {};
+   console.log(dayStartTime)
+   console.log(dayEndTime)
+   console.log(nightStartTime)
+   console.log(nightEndTime)
+  // Decide shift range
+  if (calendarName.includes("صباحا")) {
+    param.start_time = dayStartTime;
+    param.end_time = dayEndTime;
+    param.workStart = "09:00:00";
+    param.workEnd = "18:00:00";
+  } else if (calendarName.includes("مساءا")) {
+    param.start_time = nightStartTime;
+    param.end_time = nightEndTime;
+    param.night_shift = true
+  } else {
+    // fallback to day shift
+    param.start_time = dayStartTime;
+    param.end_time = dayEndTime;
+    param.night_shift = false
+  }
+
+  param.page_size = 1000;
+  param.emp_code = employee?.registration_number;
+
+
+
+
+
+  // 1. Try cache
+  const cached = getCachedTransactions(param.emp_code, monthName);
+  if (cached) {
+    employee.transactions = cached;
+  } else {
+    // 2. Fetch if not cached
+    try {
+      const txResponse = await axios.get(`/iclock/api/transactions/`, {
+        headers: {
+          Authorization: `Token ${token}`,
+          "Content-Type": "application/json",
+        },
+        params: {
+          emp_code: param.emp_code,
+          page_size: "1000",
+          start_time: filters.day_start_time || filters.night_start_time, // adjust as needed
+          end_time: filters.day_end_time || filters.night_end_time,       // adjust as needed
+        },
+      });
+
+      const txList = txResponse.data.data || [];
+      employee.transactions = txList;
+
+      // 3. Save to cache
+      saveTransactionsToCache(param.emp_code, monthName, txList);
+    } catch (err) {
+      console.error(`Failed to fetch transactions for ${param.emp_code}`, err);
+      employee.transactions = [];
+    }
+  }
+
+
+  var statistics = null
+  // If transactions already attached, compute stats
+  if (employee.transactions) {
+    
+    if(param.night_shift){
+      statistics = trackAttendanceNightShift(  employee.transactions,
+          param.start_time,
+          param.end_time,
+          15,
+          calendars,
+          employee
+      )
+    }else{
+      statistics= trackAttendanceDayShift(
+        employee.transactions,
+        param.start_time,
+        param.end_time,
+        15,
+        calendars,
+        employee)
     }
 
-    param.page_size= 1000;
-    param.emp_code= employee?.registration_number
+    employee.statistics = statistics
+  
+    
+  }
+  console.log("*********************employee.statistics****************")
+  console.log(employee.statistics)
 
-    return param;
+  return param;
 }
+
+function getEmployeeShiftRanges(employee, dayStartTime, dayEndTime, nightStartTime, nightEndTime) {
+  const calendarName = employee?.resource_calendar_id?.[1] || "";
+
+  let param = {};
+
+  // Decide shift range
+  if (calendarName.includes("صباحا")) {
+    param.start_time = dayStartTime;
+    param.end_time = dayEndTime;
+    param.workStart = "09:00:00";
+    param.workEnd = "18:00:00";
+  } else if (calendarName.includes("مساءا")) {
+    param.start_time = nightStartTime;
+    param.end_time = nightEndTime;
+    param.workStart = "21:00:00";
+    param.workEnd = "06:00:00";
+  } else {
+    // fallback to day shift
+    param.start_time = dayStartTime;
+    param.end_time = dayEndTime;
+    param.workStart = "09:00:00";
+    param.workEnd = "18:00:00";
+  }
+
+  param.page_size = 1000;
+  param.emp_code = employee?.registration_number;
+
+
+  return param;
+
+}
+
 
 
 
@@ -365,43 +473,18 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
     });
 
     const employees = response.data.result || [];
-
-    // --- Attach transactions (cache-first)
-    const monthName = getCurrentCustomMonth(new Date().getFullYear())?.name || "Unknown";
-
+    const calenders = await makeTheCalendarInfo()
+ 
     for (const emp of employees) {
-      const empCode = emp.registration_number;
-
-      // 1. Try cache
-      const cached = getCachedTransactions(empCode, monthName);
-      if (cached) {
-        emp.transactions = cached;
-      } else {
-        // 2. Fetch if not cached
-        try {
-          const txResponse = await axios.get(`/iclock/api/transactions/`, {
-            headers: {
-              Authorization: `Token ${token}`,
-              "Content-Type": "application/json",
-            },
-            params: {
-              emp_code: empCode,
-              page_size: "1000",
-              start_time: filters.day_start_time || filters.night_start_time, // adjust as needed
-              end_time: filters.day_end_time || filters.night_end_time,       // adjust as needed
-            },
-          });
-
-          const txList = txResponse.data.data || [];
-          emp.transactions = txList;
-
-          // 3. Save to cache
-          saveTransactionsToCache(empCode, monthName, txList);
-        } catch (err) {
-          console.error(`Failed to fetch transactions for ${empCode}`, err);
-          emp.transactions = [];
-        }
+      emp.salary = 3000
+      const employeeCalendar = Object.values(calenders).find(
+      c => c.id === emp.resource_calendar_id[0]
+      ) ;
+      if(employeeCalendar){
+        getEmployeeStaticInfo(token, emp,calenders)
       }
+      
+      
     }
 
     setEmployees(employees);
@@ -432,7 +515,7 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
 
 
 
-      const trackAttendance = (
+    const trackAttendance = (
       punches,
       startTimeStr,
       endTimeStr,

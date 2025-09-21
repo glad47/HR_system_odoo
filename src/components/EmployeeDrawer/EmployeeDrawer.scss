@@ -1,0 +1,57 @@
+.employee-drawer {
+  padding: 16px;
+
+  p {
+    margin: 6px 0;
+    font-size: 14px;
+    color: #444;
+
+    strong {
+      color: #222;
+    }
+  }
+
+  h3 {
+    margin-top: 24px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1677ff; // Ant Design primary blue
+    border-bottom: 1px solid #eee;
+    padding-bottom: 4px;
+  }
+
+  .statistics {
+    margin-top: 20px;
+    padding: 12px 16px;
+    background: #f9fafc;
+    border: 1px solid #e6e6e6;
+    border-radius: 6px;
+
+    p {
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+
+      strong {
+        font-weight: 500;
+        color: #555;
+      }
+    }
+  }
+
+  .transactions-table {
+    margin-top: 16px;
+
+    .ant-table {
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .ant-table-thead > tr > th {
+      background: #fafafa;
+      font-weight: 600;
+      color: #333;
+    }
+  }
+}
