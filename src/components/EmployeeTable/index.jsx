@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Table, Button, Drawer } from 'antd';
@@ -10,7 +10,8 @@ import { getCachedTransactions, saveTransactionsToCache } from "../../utils/tran
 import {getCurrentCustomMonth} from "../../utils/dateRanges"
 import { trackAttendanceNightShift, trackAttendanceDayShift } from '../../utils/attendance';
 import { makeTheCalendarInfo } from "../../utils/calendar";
-
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 
 const useStyle = createStyles(({ css, token }) => {
@@ -41,7 +42,7 @@ const useStyle = createStyles(({ css, token }) => {
 
 
 
-const EmployeeTable = () => {
+const EmployeeTable = ({department}) => {
   const { styles } = useStyle();
 
   const [employees, setEmployees] = useState([]); 
@@ -63,6 +64,11 @@ const EmployeeTable = () => {
   const [dayEndTime, setDayEndTime] = useState(null);
   const [nightStartTime, setNightStartTime] = useState(null);
   const [nightEndTime, setNightEndTime] = useState(null);
+  const [calendarsIds, setCalendarsIds] = useState(null);
+  const [calculating, setCalculating] = useState(false);
+  const [employeeContracts, setEmployeeContracts] = useState([]);
+  const hasFetchedSalary = useRef(false);
+
 
   
 
@@ -149,23 +155,44 @@ function getColorForDepartment(name) {
 
   const navigate = useNavigate();
 
-
-
   useEffect(() => {
-      const rawSession = localStorage.getItem('sessionData');
-      const ses = rawSession ? JSON.parse(rawSession) : null;
+  console.log("1")
+  const rawSession = localStorage.getItem('sessionData');
+  const ses = rawSession ? JSON.parse(rawSession) : null;
 
-      if (!ses || !ses.token) {
-        navigate('/');
-        return;
-      }
+  if (!ses || !ses.token) {
+    navigate('/');
+    return;
+  }
 
-      setSession(ses)
+  //  Run salary fetch only once
+  if (!hasFetchedSalary.current) {
+    getSalaryForEmployee(ses.uid, ses.password);
+    hasFetchedSalary.current = true;
+  }
 
-      fetchEmployees(ses.token , ses.uid, ses.password, currentPage, pageSize)
+  setSession(ses);
 
-  
-  }, [navigate, currentPage]);
+  if (
+    employeeContracts &&
+    currentPage &&
+    dayStartTime &&
+    dayEndTime &&
+    nightStartTime &&
+    nightEndTime
+  ) {
+    fetchEmployees(ses.token, ses.uid, ses.password, currentPage, pageSize);
+  }
+}, [
+  navigate,
+  employeeContracts,
+  currentPage,
+  dayStartTime,
+  dayEndTime,
+  nightStartTime,
+  nightEndTime
+]);
+
 
 
 
@@ -185,12 +212,16 @@ function getColorForDepartment(name) {
 
 
   const handleSearch = (values) => {
+    console.log("vvvvvvvvvvvvvvvvvvvvvvvvvv")
+    console.log(values)
     setLoading(true);
     
     setDayStartTime(values.day_start_time);
     setDayEndTime(values.day_end_time);
     setNightStartTime(values.night_start_time);
     setNightEndTime(values.night_end_time);
+    setCalendarsIds(values.calendars_ids);
+    
 
     setFilters(values);
     
@@ -198,79 +229,12 @@ function getColorForDepartment(name) {
 
 
   useEffect(() => {
+    console.log("2")
     setCurrentPage(1);
     fetchEmployees( session.token, session.uid, session.password, 1, pageSize);
     console.log(filters)
   }, [filters])
 
-
-
-
-
-
-  // useEffect(() => {
-  //   const getTranscation = async () => {
-  //      const results = await Promise.all(
-  //         employees.map(async (emp) => {
-  //           const transactions = await fetchTransactions(session.token, emp);
-  //           console.log("call from the fetch data");
-  //           console.log(transactions);
-  //           return { ...emp, transactions }; // return a new object with transactions
-  //         })
-  //       );
-
-  //       console.log(results)  
-  //   }
-  //    if(session && employees && dayStartTime && dayEndTime && nightStartTime && nightEndTime){
-       
-  //       getTranscation();
-  //    }
-
-  // },
-  // [session, employees, dayStartTime, dayEndTime,  nightStartTime, nightEndTime ])
-
-
-
-
-
-//   const  fetchTransactions = async (authToken) => {
-//   // setLoading(true); // Start spinner
-//   try {
-//     const response = await axios.get(`/iclock/api/transactions/`, {
-//       headers: {
-//         Authorization: `Token ${authToken}`,
-//         'Content-Type': 'application/json',
-//       },
-//       params: {
-//         page_size: "10",
-//         start_time: '2025-08-26 00:00:00',
-//         end_time: '2025-09-25 23:59:59',
-//       },
-//     });
-
-//     console.log(response)
-//     const {data } = response.data;
-//     console.log(data)
-  
-
-//     setTransactions(data);
-//     // setTotal(count);
-
-//     // const nextPage = extractPageNumber(next);
-//     // const prevPage = extractPageNumber(previous);
-
-//     // console.log("Next page:", nextPage);
-//     // console.log("Previous page:", prevPage);
-//   } catch (err) {
-//     navigate('/');
-//     console.log("xvcxvcxcxvcvxcvvxvxvxvcvcxvxcvcx")
-//     console.log(err)
-
-//     console.error("Fetch failed:", err);
-//   }finally {
-//     setLoading(false); // Stop spinner
-//   }
-// };
 
 
 
@@ -281,10 +245,6 @@ const getEmployeeStaticInfo = async (token, employee, calendars) =>  {
 
 
   let param = {};
-   console.log(dayStartTime)
-   console.log(dayEndTime)
-   console.log(nightStartTime)
-   console.log(nightEndTime)
   // Decide shift range
   if (calendarName.includes("صباحا")) {
     param.start_time = dayStartTime;
@@ -367,8 +327,7 @@ const getEmployeeStaticInfo = async (token, employee, calendars) =>  {
   
     
   }
-  console.log("*********************employee.statistics****************")
-  console.log(employee.statistics)
+
 
   return param;
 }
@@ -428,6 +387,36 @@ const fetchTransactions = async (authToken, employee) => {
 };
 
 
+const getSalaryForEmployee = async (uid, password) => {
+  const response = await axios.post("/jsonrpc", {
+  "jsonrpc": "2.0",
+  "method": "call",
+  "params": {
+    "service": "object",
+    "method": "execute_kw",
+    "args": [
+      "odoo",
+      uid,
+      password,
+      "hr.contract",
+      "search_read",
+      [[   ]],  // Replace with contract ID from previous step
+      {
+        "fields": ["wage", "employee_id", "date_start", "date_end", "resource_calendar_id"],
+        "offset": 0,
+        "limit": 10000
+          
+      }
+    ]
+  },
+  "id": 1
+});
+  const res = response.data.result || []
+  setEmployeeContracts(res)
+  
+};
+
+
 
 
 const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => {
@@ -445,6 +434,13 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
     }
     if (filters.department_id) {
       domain.push(["department_id", "=", filters.department_id]);
+    }
+
+    if (filters.calendars_ids) {
+      domain.push(["resource_calendar_id", "in", filters.calendars_ids]);
+    }
+    if(department){
+       domain.push(["department_id", "=", department.id]);
     }
     domain.push(["registration_number", "!=", false]);
 
@@ -476,14 +472,18 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
     const calenders = await makeTheCalendarInfo()
  
     for (const emp of employees) {
-      emp.salary = 3000
+      emp.salary = 0
       const employeeCalendar = Object.values(calenders).find(
-      c => c.id === emp.resource_calendar_id[0]
+        c => c.id === emp.resource_calendar_id[0]
       ) ;
-      if(employeeCalendar){
-        getEmployeeStaticInfo(token, emp,calenders)
-      }
+      const contract =  employeeContracts.find(
+          c => Array.isArray(c.employee_id) && c.employee_id[0] === emp.id
+        );
       
+      if (contract && employeeCalendar){
+       emp.salary = contract?.wage ?? 0;
+       getEmployeeStaticInfo(token, emp,calenders)
+      }
       
     }
 
@@ -507,6 +507,135 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
   } finally {
     setLoading(false);
   }
+
+  return employees;
+};
+
+
+
+const fetchEmployeesAll = async (token, uid, password, page = 1, pageSize = 100) => {
+
+  try {
+   const offset = (page - 1) * pageSize;
+
+   console.log(offset)
+
+    // Build domain dynamically
+    const domain = [];
+
+    if(department){
+       domain.push(["department_id", "=", department.id]);
+    }
+
+    
+    domain.push(["registration_number", "!=", false]);
+
+    // --- Fetch employees from Odoo
+    const response = await axios.post("/jsonrpc", {
+      jsonrpc: "2.0",
+      method: "call",
+      params: {
+        service: "object",
+        method: "execute_kw",
+        args: [
+          "odoo",
+          uid,
+          password,
+          "hr.employee",
+          "search_read",
+          [domain],
+          {
+            fields: ["name", "registration_number", "resource_calendar_id", "department_id"],
+            offset: 1,
+            limit: 9999,
+          },
+        ],
+      },
+      id: 1,
+    });
+
+    const employees = response.data.result || [];
+    const calenders = await makeTheCalendarInfo()
+ 
+    for (const emp of employees) {
+      emp.salary = 0
+      const employeeCalendar = Object.values(calenders).find(
+        c => c.id === emp.resource_calendar_id[0]
+      ) ;
+      const contract =  employeeContracts.find(
+          c => Array.isArray(c.employee_id) && c.employee_id[0] === emp.id
+        );
+      if (contract && employeeCalendar){
+       emp.salary = contract?.wage ?? 0;
+       getEmployeeStaticInfo(token, emp,calenders)
+      }
+      
+    }
+  } catch (err) {
+    console.error("Odoo fetch failed:", err);
+  } finally {
+    setLoading(false);
+  }
+
+  return employees;
+};
+
+
+
+
+
+
+const onCalculateAll = async () => {
+ 
+  const allEmployees = await fetchEmployeesAll(session.token,session.uid, session.password);
+
+
+  // Build combined rows with info + stats
+  const rows = allEmployees.map((emp, index) => {
+    const rowIndex = index + 2; // Excel row (row 1 is header)
+
+    return {
+      ID: emp.id,
+      Name: emp.name,
+      Registration: emp.registration_number,
+      Department: Array.isArray(emp.department_id) ? emp.department_id[1] : "",
+      WorkSchedule: Array.isArray(emp.resource_calendar_id) ? emp.resource_calendar_id[1] : "",
+      Salary: emp.salary ?? 0,
+      TotalDays: emp.statistics?.totalDays ?? 0,
+      FullDays: emp.statistics?.fullDays ?? 0,
+      PartialDays: emp.statistics?.partialDays ?? 0,
+      AbsentDays: emp.statistics?.absentDays ?? 0,
+      UpcomingDays: emp.statistics?.upcomingDays ?? 0,
+      MinutesLate: emp.statistics?.totals?.minutesLateOnArrival ?? 0,
+      MinutesEarlyArrival: emp.statistics?.totals?.minutesEarlyArrival ?? 0,
+      MinutesLeftEarly: emp.statistics?.totals?.minutesLeftEarly ?? 0,
+      MinutesOverworked: emp.statistics?.totals?.minutesOverworked ?? 0,
+      MissingInPunches: emp.statistics?.totals?.missingInPunches ?? 0,
+      MissingOutPunches: emp.statistics?.totals?.missingOutPunches ?? 0,
+      LateArrivalsCount: emp.statistics?.totals?.arrivedLateCount ?? 0,
+      LeftEarlyCount: emp.statistics?.totals?.leftEarlyCount ?? 0,
+      OverworkedCount: emp.statistics?.totals?.overworkedCount ?? 0,
+      Borrow: emp.statistics?.borrow ?? 0,
+      // Formulas: reference the right columns by letter
+      DeductionLate: { f: `((F${rowIndex}/30)/120)*L${rowIndex}` }, 
+      // Salary in F, MinutesLate in L
+      DeductionAbsent: { f: `(F${rowIndex}/30)*(J${rowIndex}+INT((P${rowIndex}+Q${rowIndex})/2))` },
+      // Salary in F, AbsentDays in K, MissingInPunches in N, MissingOutPunches in O
+      NetSalary: { f: `F${rowIndex}-V${rowIndex}-W${rowIndex}-U${rowIndex}` }
+      // Salary in F, DeductionLate in S, DeductionAbsent in T, Borrow in Q
+    };
+  });
+
+  // Convert to worksheet
+  const ws = XLSX.utils.json_to_sheet(rows, { skipHeader: false });
+
+  // Create workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Employees+Stats");
+
+  // Export
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  saveAs(new Blob([wbout], { type: "application/octet-stream" }), "Employees_Salaries.xlsx");
 };
 
 
@@ -515,192 +644,15 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
 
 
 
-    const trackAttendance = (
-      punches,
-      startTimeStr,
-      endTimeStr,
-      workStart = '09:00:00',
-      workEnd = '18:00:00',
-      allowanceMinutes = 15
-    ) => {
-      const startDate = new Date(startTimeStr);
-      const endDate = new Date(endTimeStr);
-      const attendanceMap = new Map();
-
-      // Group punches by date
-      punches.forEach(punch => {
-        const punchDateTime = new Date(punch.punch_time);
-        const punchDateKey = punchDateTime.toISOString().split('T')[0];
-        if (!attendanceMap.has(punchDateKey)) {
-          attendanceMap.set(punchDateKey, []);
-        }
-        attendanceMap.get(punchDateKey).push(punchDateTime);
-      });
-
-      let fullDays = 0;
-      let partialDays = 0;
-      let absentDays = 0;
-      const details = [];
-
-      // Generate all dates in range (fixed loop)
-      let currentDate = new Date(startDate);
-      while (currentDate.getTime() <= endDate.getTime()) {
-        const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-        const punchTimes = attendanceMap.get(dateKey) || [];
-
-        if (punchTimes.length === 0) {
-          absentDays++;
-          details.push({
-            date: dateKey,
-            status: 'Absent',
-            absent: true,
-            firstPunch: null,
-            lastPunch: null,
-            isLate: false,
-            lateByMinutes: 0,
-            earlyArrivalByMinutes: 0,
-            leftEarly: false,
-            earlyByMinutes: 0,
-            overworked: false,
-            overworkByMinutes: 0,
-            missingOutPunch: false,
-            missingInPunch: false
-          });
-          currentDate.setDate(currentDate.getDate() + 1);
-          continue;
-        }
-
-        punchTimes.sort((a, b) => a - b);
-        const firstPunch = punchTimes[0];
-        const lastPunch = punchTimes[punchTimes.length - 1];
-
-        const workStartTime = new Date(`${dateKey}T${workStart}`);
-        const workEndTime = new Date(`${dateKey}T${workEnd}`);
-        const workMidTime = new Date((workStartTime.getTime() + workEndTime.getTime()) / 2);
-
-        let rawLate = 0;
-        let earlyArrivalByMinutes = 0;
-        let rawEarlyLeave = 0;
-        let overworkByMinutes = 0;
-        let isLate = false;
-        let leftEarly = false;
-        let overworked = false;
-        let missingOutPunch = false;
-        let missingInPunch = false;
-
-        if (punchTimes.length >= 2) {
-          rawLate = firstPunch > workStartTime
-            ? Math.round((firstPunch - workStartTime) / 60000)
-            : 0;
-
-          earlyArrivalByMinutes = firstPunch < workStartTime
-            ? Math.round((workStartTime - firstPunch) / 60000)
-            : 0;
-
-          rawEarlyLeave = lastPunch < workEndTime
-            ? Math.round((workEndTime - lastPunch) / 60000)
-            : 0;
-
-          overworkByMinutes = lastPunch > workEndTime
-            ? Math.round((lastPunch - workEndTime) / 60000)
-            : 0;
-
-          isLate = rawLate > allowanceMinutes;
-          leftEarly = rawEarlyLeave > allowanceMinutes;
-          overworked = overworkByMinutes > allowanceMinutes;
-        } else {
-          if (firstPunch < workMidTime) {
-            rawLate = firstPunch > workStartTime
-              ? Math.round((firstPunch - workStartTime) / 60000)
-              : 0;
-
-            earlyArrivalByMinutes = firstPunch < workStartTime
-              ? Math.round((workStartTime - firstPunch) / 60000)
-              : 0;
-
-            isLate = rawLate > allowanceMinutes;
-            missingOutPunch = true;
-          } else {
-            rawEarlyLeave = lastPunch < workEndTime
-              ? Math.round((workEndTime - lastPunch) / 60000)
-              : 0;
-
-            overworkByMinutes = lastPunch > workEndTime
-              ? Math.round((lastPunch - workEndTime) / 60000)
-              : 0;
-
-            leftEarly = rawEarlyLeave > allowanceMinutes;
-            overworked = overworkByMinutes > allowanceMinutes;
-            missingInPunch = true;
-          }
-        }
-
-        const lateByMinutes = isLate ? rawLate : 0;
-        const earlyByMinutes = leftEarly ? rawEarlyLeave : 0;
-
-        const status = punchTimes.length >= 2 ? 'Full' : 'Partial';
-        if (status === 'Full') fullDays++;
-        else partialDays++;
-
-        details.push({
-          date: dateKey,
-          status,
-          absent: false,
-          firstPunch: firstPunch.toLocaleTimeString(),
-          lastPunch: lastPunch.toLocaleTimeString(),
-          isLate,
-          lateByMinutes,
-          earlyArrivalByMinutes,
-          leftEarly,
-          earlyByMinutes,
-          overworked,
-          overworkByMinutes,
-          missingOutPunch,
-          missingInPunch
-        });
-
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
-
-      return {
-        totalDays: fullDays + partialDays + absentDays,
-        fullDays,
-        partialDays,
-        absentDays,
-        datesPresent: details.map(d => d.date),
-        details
-      };
-    };
+   
 
 
 
 
   return (
-  //  <Table
-  //     columns={columns}
-  //     dataSource={transactions}
-  //     loading={loading} 
-  //     pagination={{
-  //       current: currentPage,
-  //       pageSize,
-  //       total,
-  //       showSizeChanger: true,
-  //       onChange: (page) => {
-  //         setCurrentPage(page);
-  //         fetchTransactions(session.token, page, pageSize);
-  //       },
-  //       onShowSizeChange: (current, size) => {
-  //         setPageSize(size);
-  //         fetchTransactions(session.token, current, size);
-  //       }
-  //     }}
-
-  //     rowKey="id"
-  //     scroll={{ y: 55 * 5 }}
-  //   />
   <>
-     <EmployeeFilter onSearch={handleSearch} session={session}/>
-
+     <EmployeeFilter onSearch={handleSearch} session={session} onCalculateAll={onCalculateAll} />
+    
       <Table
         columns={columns}
         dataSource={employees}
@@ -712,11 +664,11 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
           showSizeChanger: true,
           onChange: (page) => {
             setCurrentPage(page);
-            fetchEmployees(session.uid, session.password, page, pageSize);
+            fetchEmployees(session.token , session.uid, session.password, page, pageSize);
           },
           onShowSizeChange: (current, size) => {
             setPageSize(size);
-            fetchEmployees(session.uid, session.password, current, size);
+            fetchEmployees(session.token, session.uid, session.password, current, size);
           }
         }}
         rowKey="id"

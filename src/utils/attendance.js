@@ -15,6 +15,7 @@ export function trackAttendanceDayShift(
   let fullDays = 0;
   let partialDays = 0;
   let absentDays = 0;
+  let upcomingDays = 0;
   const details = [];
 
   // Totals accumulator
@@ -30,6 +31,9 @@ export function trackAttendanceDayShift(
     overworkedCount: 0
   };
 
+  // Today (normalized to midnight)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   let currentDate = new Date(startDate);
 
@@ -48,6 +52,7 @@ export function trackAttendanceDayShift(
     // Get today’s ranges from the calendar
     const todaysRanges = employeeCalendar.days?.[dayName] || [];
 
+    // Holiday
     if (todaysRanges.length === 0) {
       fullDays++;
       details.push({
@@ -71,12 +76,11 @@ export function trackAttendanceDayShift(
       continue;
     }
 
-
-    
-    // Build shift anchors (day shift: same day start/end)
+    // Build shift anchors
     const shiftStart = new Date(`${dateKey}T${todaysRanges[0].from}`);
     const shiftEnd   = new Date(`${dateKey}T${todaysRanges[0].to}`);
-      // Expand shift window by 3 hours before start and 3 hours after end
+
+    // Expand shift window by 4 hours before and after
     const expandedShiftStart = new Date(shiftStart.getTime() - 4 * 60 * 60 * 1000);
     const expandedShiftEnd   = new Date(shiftEnd.getTime()   + 4 * 60 * 60 * 1000);
 
@@ -85,135 +89,150 @@ export function trackAttendanceDayShift(
       t => t >= expandedShiftStart && t <= expandedShiftEnd
     );
 
+    // No punches
+    if (punchesInShift.length === 0) {
+      if (currentDate.getTime() > today.getTime()) {
+        // Future → Upcoming
+        upcomingDays++;
+        details.push({
+          date: dateKey,
+          status: "Upcoming",
+          absent: false,
+          arrivalTime: null,
+          departureTime: null,
+          arrivedLate: false,
+          minutesLateOnArrival: 0,
+          minutesEarlyArrival: 0,
+          leftEarly: false,
+          minutesLeftEarly: 0,
+          didOverwork: false,
+          minutesOverworked: 0,
+          missingInPunch: false,
+          missingOutPunch: false,
+          holiday: false
+        });
+      } else {
+        // Past → Absent
+        absentDays++;
+        details.push({
+          date: dateKey,
+          status: "Absent",
+          absent: true,
+          arrivalTime: null,
+          departureTime: null,
+          arrivedLate: false,
+          minutesLateOnArrival: 0,
+          minutesEarlyArrival: 0,
+          leftEarly: false,
+          minutesLeftEarly: 0,
+          didOverwork: false,
+          minutesOverworked: 0,
+          missingInPunch: true,
+          missingOutPunch: true,
+          holiday: false
+        });
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+      continue;
+    }
 
-
-    const inPunches = []
-    const outPunches = []
+    // Split punches into IN/OUT by hour
+    const inPunches = [];
+    const outPunches = [];
     for (const punch of punchesInShift) {
-      const hour = punch.getHours(); // 0–23
-
+      const hour = punch.getHours();
       if (hour >= 0 && hour < 12) {
-        // 00:00 → 11:59
         inPunches.push(punch);
       } else {
-        // 12:00 → 23:59
         outPunches.push(punch);
       }
     }
 
+    const firstPunch = inPunches.length ? inPunches[0] : null;
+    const lastPunch  = outPunches.length ? outPunches[outPunches.length - 1] : null;
 
+    const hasIn  = !!firstPunch;
+    const hasOut = !!lastPunch;
 
-    
-     // Pick IN from base day only, OUT from next day only
-      const firstPunch = inPunches.length ? inPunches[0] : null;
-      const lastPunch  = outPunches.length ? outPunches[outPunches.length - 1] : null;
+    // Metrics
+    const rawLate              = hasIn ? Math.max(0, Math.round((firstPunch - shiftStart) / 60000)) : 0;
+    const earlyArrivalByMinutes= hasIn ? Math.max(0, Math.round((shiftStart - firstPunch) / 60000)) : 0;
+    const rawEarlyLeave        = hasOut ? Math.max(0, Math.round((shiftEnd - lastPunch) / 60000)) : 0;
+    const overworkByMinutes    = hasOut ? Math.max(0, Math.round((lastPunch - shiftEnd) / 60000)) : 0;
 
-      // Presence flags
-      const hasIn  = !!firstPunch;
-      const hasOut = !!lastPunch;
+    const isLate     = hasIn  ? rawLate > allowanceMinutes : false;
+    const leftEarly  = hasOut ? rawEarlyLeave > allowanceMinutes : false;
+    const overworked = hasOut ? overworkByMinutes > 0 : false;
 
-    // Compute metrics safely (0 if missing)
-      const rawLate              = hasIn ? Math.max(0, Math.round((firstPunch - shiftStart) / 60000)) : 0;
-      const earlyArrivalByMinutes= hasIn ? Math.max(0, Math.round((shiftStart - firstPunch) / 60000)) : 0;
+    const status = hasIn && hasOut ? "Full" : hasIn || hasOut ? "Partial" : "Absent";
 
-      const rawEarlyLeave        = hasOut ? Math.max(0, Math.round((shiftEnd - lastPunch) / 60000)) : 0;
-      const overworkByMinutes    = hasOut ? Math.max(0, Math.round((lastPunch - shiftEnd) / 60000)) : 0;
+    fullDays   += status === "Full"    ? 1 : 0;
+    partialDays+= status === "Partial" ? 1 : 0;
+    absentDays += status === "Absent"  ? 1 : 0;
 
-      const isLate     = hasIn  ? rawLate > allowanceMinutes : false;
-      const leftEarly  = hasOut ? rawEarlyLeave > allowanceMinutes : false;
-      const overworked = hasOut ? overworkByMinutes > 0 : false;
+    const detail = {
+      date: dateKey,
+      status,
+      absent: status === "Absent",
+      arrivalTime:   hasIn  ? formatDateTime24(firstPunch) : null,
+      departureTime: hasOut ? formatDateTime24(lastPunch)  : null,
+      arrivedLate: hasIn ? isLate : false,
+      minutesLateOnArrival: hasIn && isLate ? rawLate : 0,
+      minutesEarlyArrival:  hasIn ? earlyArrivalByMinutes : 0,
+      leftEarly: hasOut ? leftEarly : false,
+      minutesLeftEarly: hasOut && leftEarly ? rawEarlyLeave : 0,
+      didOverwork: hasOut ? overworked : false,
+      minutesOverworked: hasOut ? overworkByMinutes : 0,
+      missingInPunch:  !hasIn,
+      missingOutPunch: !hasOut,
+      holiday: false
+    };
 
-      // Derive status
-      const status = hasIn && hasOut ? "Full" : hasIn || hasOut ? "Partial" : "Absent";
+    details.push(detail);
 
-      // Update counters
-      fullDays   += status === "Full"    ? 1 : 0;
-      partialDays+= status === "Partial" ? 1 : 0;
-      absentDays += status === "Absent"  ? 1 : 0;
+    // Update totals
+    totals.minutesEarlyArrival   += detail.minutesEarlyArrival;
+    totals.minutesLateOnArrival  += detail.minutesLateOnArrival;
+    totals.minutesLeftEarly      += detail.minutesLeftEarly;
+    totals.minutesOverworked     += detail.minutesOverworked;
+    totals.missingInPunches      += detail.missingInPunch ? 1 : 0;
+    totals.missingOutPunches     += detail.missingOutPunch ? 1 : 0;
+    totals.leftEarlyCount        += detail.leftEarly ? 1 : 0;
+    totals.arrivedLateCount      += detail.arrivedLate ? 1 : 0;
+    totals.overworkedCount       += detail.didOverwork ? 1 : 0;
 
-      // Push detail
-      const detail = {
-          date: dateKey,
-          status,
-          absent: status === "Absent",
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
 
-          // Punch times in 24h format
-          arrivalTime:   hasIn  ? formatDateTime24(firstPunch) : null,
-          departureTime: hasOut ? formatDateTime24(lastPunch)  : null,
+  // Salary calculations
+  const salary = employee.salary;
+  const borrow = employee.borrow || 0;
 
-          // Arrival-related metrics
-          arrivedLate: hasIn ? isLate : false,
-          minutesLateOnArrival: hasIn && isLate ? rawLate : 0,
-          minutesEarlyArrival:  hasIn ? earlyArrivalByMinutes : 0,
+  const deductionLate = (salary / 30 / 120) * totals.minutesLateOnArrival;
+  const missingPunches = totals.missingInPunches + totals.missingOutPunches;
+  const deductionAbsent = (salary / 30) * (absentDays + Math.floor(missingPunches / 2));
+  const netSalary = salary - (deductionLate + deductionAbsent + borrow);
 
-          // Departure-related metrics
-          leftEarly: hasOut ? leftEarly : false,
-          minutesLeftEarly: hasOut && leftEarly ? rawEarlyLeave : 0,
-          didOverwork: hasOut ? overworked : false,
-          minutesOverworked: hasOut ? overworkByMinutes : 0,
-
-          // New indicators
-          missingInPunch:  !hasIn,
-          missingOutPunch: !hasOut,
-          holiday: false
-        }
-        details.push(detail);
-
-
-        // 🔑 update totals immediately
-        totals.minutesEarlyArrival   += detail.minutesEarlyArrival;
-        totals.minutesLateOnArrival  += detail.minutesLateOnArrival;
-        totals.minutesLeftEarly      += detail.minutesLeftEarly;
-        totals.minutesOverworked     += detail.minutesOverworked;
-
-        totals.missingInPunches      += detail.missingInPunch ? 1 : 0;
-        totals.missingOutPunches     += detail.missingOutPunch ? 1 : 0;
-
-        totals.leftEarlyCount        += detail.leftEarly ? 1 : 0;
-        totals.arrivedLateCount      += detail.arrivedLate ? 1 : 0;
-        totals.overworkedCount       += detail.didOverwork ? 1 : 0;
-
-
-
-     currentDate.setDate(currentDate.getDate() + 1);
-   }
-
-     
-  
-
-
-      const salary = employee.salary;   // or however you get it
-      const borrow = employee.borrow || 0;
-
-      // 1. Late arrival deduction
-      const deductionLate = (salary / 30 / 120) * totals.minutesLateOnArrival;
-
-      // 2. Absent + missing punches deduction
-      const missingPunches = totals.missingInPunches + totals.missingOutPunches;
-      const deductionAbsent = (salary / 30) * (absentDays + (missingPunches / 2));
-
-      // 3. Net salary
-      const netSalary = salary - (deductionLate + deductionAbsent + borrow);
-
-      // Now return everything together
-      return {
-        totalDays: fullDays + partialDays + absentDays,
-        fullDays,
-        partialDays,
-        absentDays,
-        details,
-        totals,
-        deductionLate,
-        deductionAbsent,
-        borrow,
-        netSalary
-      };
-    
+  // Final return
+  return {
+    totalDays: fullDays + partialDays + absentDays + upcomingDays,
+    fullDays,
+    partialDays,
+    absentDays,
+    upcomingDays,
+    details,
+    totals,
+    deductionLate,
+    deductionAbsent,
+    borrow,
+    netSalary
+  };
 }
 
 
 
-export function  trackAttendanceNightShift(
+
+export function trackAttendanceNightShift(
   punches,
   startDateStr,
   endDateStr,
@@ -230,9 +249,10 @@ export function  trackAttendanceNightShift(
   let fullDays = 0;
   let partialDays = 0;
   let absentDays = 0;
+  let upcomingDays = 0;
   const details = [];
 
-  // new totals accumulator
+  // Totals accumulator
   const totals = {
     minutesEarlyArrival: 0,
     minutesLateOnArrival: 0,
@@ -245,17 +265,17 @@ export function  trackAttendanceNightShift(
     overworkedCount: 0
   };
 
+  // Today (normalized to midnight)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   let currentDate = new Date(startDate);
-  
+
   while (currentDate.getTime() <= endDate.getTime()) {
     const dateKey = currentDate.toISOString().split("T")[0];
     const nextDay = new Date(currentDate);
- 
     nextDay.setDate(nextDay.getDate() + 1);
     const nextDayStr = nextDay.toISOString().split("T")[0];
-    // const dateKey = nextDay.toISOString().split("T")[0];
-
 
     // Link employee to their calendar
     const employeeCalendar = Object.values(calendars).find(
@@ -269,6 +289,7 @@ export function  trackAttendanceNightShift(
     // Get today’s ranges from the calendar
     const todaysRanges = employeeCalendar.days?.[dayName] || [];
 
+    // Holiday (no shift defined)
     if (todaysRanges.length === 0) {
       fullDays++;
       details.push({
@@ -291,156 +312,160 @@ export function  trackAttendanceNightShift(
       currentDate.setDate(currentDate.getDate() + 1);
       continue;
     }
-    
 
-
-     // Build shift anchors (day shift: same day start/end)
+    // Build shift anchors
     const shiftStart = new Date(`${dateKey}T${todaysRanges[0].from}`);
     const shiftEnd   = new Date(`${nextDayStr}T${todaysRanges[0].to}`);
-      // Expand shift window by 3 hours before start and 3 hours after end
-    const expandedShiftStart = new Date(shiftStart.getTime() - 3 * 60 * 60 * 1000);
-    const expandedShiftEnd   = new Date(shiftEnd.getTime()   + 3 * 60 * 60 * 1000);
+
+    // Expand shift window by 3 hours before start and 3 hours after end
+    const expandedShiftStart = new Date(shiftStart.getTime() - 4 * 60 * 60 * 1000);
+    const expandedShiftEnd   = new Date(shiftEnd.getTime()   + 4 * 60 * 60 * 1000);
 
     // Collect punches within expanded window
     const punchesInShift = punchTimes.filter(
-      t => t  >= expandedShiftStart && t <= expandedShiftEnd
+      t => t >= expandedShiftStart && t <= expandedShiftEnd
     );
 
-    // Collect punches within this shift window
-    // const punchesInShift = punchTimes.filter(t => t >= shiftStart && t <= shiftEnd);
-
-
-
-  
-    
-
-      const inPunches = []
-      const outPunches = []
-      for (var punch of punchesInShift){
-        
-        if(punch.toISOString().split("T")[0] == dateKey){
-          inPunches.push(punch)
-        }else if(punch.toISOString().split("T")[0] == nextDayStr){
-          outPunches.push(punch)
-        }
-
-      }
-
-
-
-       
-
-    
-
-       // Pick IN from base day only, OUT from next day only
-      const firstPunch = inPunches.length ? inPunches[0] : null;
-      const lastPunch  = outPunches.length ? outPunches[outPunches.length - 1] : null;
-
-      // Presence flags
-      const hasIn  = !!firstPunch;
-      const hasOut = !!lastPunch;
-
-    // Compute metrics safely (0 if missing)
-      const rawLate              = hasIn ? Math.max(0, Math.round((firstPunch - shiftStart) / 60000)) : 0;
-      const earlyArrivalByMinutes= hasIn ? Math.max(0, Math.round((shiftStart - firstPunch) / 60000)) : 0;
-
-      const rawEarlyLeave        = hasOut ? Math.max(0, Math.round((shiftEnd - lastPunch) / 60000)) : 0;
-      const overworkByMinutes    = hasOut ? Math.max(0, Math.round((lastPunch - shiftEnd) / 60000)) : 0;
-
-      const isLate     = hasIn  ? rawLate > allowanceMinutes : false;
-      const leftEarly  = hasOut ? rawEarlyLeave > allowanceMinutes : false;
-      const overworked = hasOut ? overworkByMinutes > 0 : false;
-
-      // Derive status
-      const status = hasIn && hasOut ? "Full" : hasIn || hasOut ? "Partial" : "Absent";
-
-      // Update counters
-      fullDays   += status === "Full"    ? 1 : 0;
-      partialDays+= status === "Partial" ? 1 : 0;
-      absentDays += status === "Absent"  ? 1 : 0;
-
-      // Push detail
-      const detail = {
+    // No punches
+    if (punchesInShift.length === 0) {
+      if (currentDate.getTime() > today.getTime()) {
+        // Future day → Upcoming
+        upcomingDays++;
+        details.push({
           date: dateKey,
-          status,
-          absent: status === "Absent",
-
-          // Punch times in 24h format
-          arrivalTime:   hasIn  ? formatDateTime24(firstPunch) : null,
-          departureTime: hasOut ? formatDateTime24(lastPunch)  : null,
-
-          // Arrival-related metrics
-          arrivedLate: hasIn ? isLate : false,
-          minutesLateOnArrival: hasIn && isLate ? rawLate : 0,
-          minutesEarlyArrival:  hasIn ? earlyArrivalByMinutes : 0,
-
-          // Departure-related metrics
-          leftEarly: hasOut ? leftEarly : false,
-          minutesLeftEarly: hasOut && leftEarly ? rawEarlyLeave : 0,
-          didOverwork: hasOut ? overworked : false,
-          minutesOverworked: hasOut ? overworkByMinutes : 0,
-
-          // New indicators
-          missingInPunch:  !hasIn,
-          missingOutPunch: !hasOut,
+          status: "Upcoming",
+          absent: false,
+          arrivalTime: null,
+          departureTime: null,
+          arrivedLate: false,
+          minutesLateOnArrival: 0,
+          minutesEarlyArrival: 0,
+          leftEarly: false,
+          minutesLeftEarly: 0,
+          didOverwork: false,
+          minutesOverworked: 0,
+          missingInPunch: false,
+          missingOutPunch: false,
           holiday: false
-        }
-        details.push(detail);
+        });
+      } else {
+        // Past day → Absent
+        absentDays++;
+        details.push({
+          date: dateKey,
+          status: "Absent",
+          absent: true,
+          arrivalTime: null,
+          departureTime: null,
+          arrivedLate: false,
+          minutesLateOnArrival: 0,
+          minutesEarlyArrival: 0,
+          leftEarly: false,
+          minutesLeftEarly: 0,
+          didOverwork: false,
+          minutesOverworked: 0,
+          missingInPunch: true,
+          missingOutPunch: true,
+          holiday: false
+        });
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+      continue;
+    }
 
+    // Split punches into IN (base day) and OUT (next day)
+    const inPunches = [];
+    const outPunches = [];
+    for (const punch of punchesInShift) {
+      if (punch.toISOString().split("T")[0] === dateKey) {
+        inPunches.push(punch);
+      } else if (punch.toISOString().split("T")[0] === nextDayStr) {
+        outPunches.push(punch);
+      }
+    }
 
-        // 🔑 update totals immediately
-        totals.minutesEarlyArrival   += detail.minutesEarlyArrival;
-        totals.minutesLateOnArrival  += detail.minutesLateOnArrival;
-        totals.minutesLeftEarly      += detail.minutesLeftEarly;
-        totals.minutesOverworked     += detail.minutesOverworked;
+    const firstPunch = inPunches.length ? inPunches[0] : null;
+    const lastPunch  = outPunches.length ? outPunches[outPunches.length - 1] : null;
 
-        totals.missingInPunches      += detail.missingInPunch ? 1 : 0;
-        totals.missingOutPunches     += detail.missingOutPunch ? 1 : 0;
+    const hasIn  = !!firstPunch;
+    const hasOut = !!lastPunch;
 
-        totals.leftEarlyCount        += detail.leftEarly ? 1 : 0;
-        totals.arrivedLateCount      += detail.arrivedLate ? 1 : 0;
-        totals.overworkedCount       += detail.didOverwork ? 1 : 0;
+    // Metrics
+    const rawLate              = hasIn ? Math.max(0, Math.round((firstPunch - shiftStart) / 60000)) : 0;
+    const earlyArrivalByMinutes= hasIn ? Math.max(0, Math.round((shiftStart - firstPunch) / 60000)) : 0;
+    const rawEarlyLeave        = hasOut ? Math.max(0, Math.round((shiftEnd - lastPunch) / 60000)) : 0;
+    const overworkByMinutes    = hasOut ? Math.max(0, Math.round((lastPunch - shiftEnd) / 60000)) : 0;
 
+    const isLate     = hasIn  ? rawLate > allowanceMinutes : false;
+    const leftEarly  = hasOut ? rawEarlyLeave > allowanceMinutes : false;
+    const overworked = hasOut ? overworkByMinutes > 0 : false;
 
+    const status = hasIn && hasOut ? "Full" : hasIn || hasOut ? "Partial" : "Absent";
 
-     currentDate.setDate(currentDate.getDate() + 1);
-   }
+    fullDays   += status === "Full"    ? 1 : 0;
+    partialDays+= status === "Partial" ? 1 : 0;
+    absentDays += status === "Absent"  ? 1 : 0;
 
-     
-  
+    const detail = {
+      date: dateKey,
+      status,
+      absent: status === "Absent",
+      arrivalTime:   hasIn  ? formatDateTime24(firstPunch) : null,
+      departureTime: hasOut ? formatDateTime24(lastPunch)  : null,
+      arrivedLate: hasIn ? isLate : false,
+      minutesLateOnArrival: hasIn && isLate ? rawLate : 0,
+      minutesEarlyArrival:  hasIn ? earlyArrivalByMinutes : 0,
+      leftEarly: hasOut ? leftEarly : false,
+      minutesLeftEarly: hasOut && leftEarly ? rawEarlyLeave : 0,
+      didOverwork: hasOut ? overworked : false,
+      minutesOverworked: hasOut ? overworkByMinutes : 0,
+      missingInPunch:  !hasIn,
+      missingOutPunch: !hasOut,
+      holiday: false
+    };
 
+    details.push(detail);
 
-      const salary = employee.salary;   // or however you get it
-      const borrow = employee.borrow || 0;
+    // Update totals
+    totals.minutesEarlyArrival   += detail.minutesEarlyArrival;
+    totals.minutesLateOnArrival  += detail.minutesLateOnArrival;
+    totals.minutesLeftEarly      += detail.minutesLeftEarly;
+    totals.minutesOverworked     += detail.minutesOverworked;
+    totals.missingInPunches      += detail.missingInPunch ? 1 : 0;
+    totals.missingOutPunches     += detail.missingOutPunch ? 1 : 0;
+    totals.leftEarlyCount        += detail.leftEarly ? 1 : 0;
+    totals.arrivedLateCount      += detail.arrivedLate ? 1 : 0;
+    totals.overworkedCount       += detail.didOverwork ? 1 : 0;
 
-      // 1. Late arrival deduction
-      const deductionLate = (salary / 30 / 120) * totals.minutesLateOnArrival;
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
 
-      // 2. Absent + missing punches deduction
-      const missingPunches = totals.missingInPunches + totals.missingOutPunches;
-      const deductionAbsent = (salary / 30) * (absentDays + (missingPunches / 2));
+  // Salary calculations
+  const salary = employee.salary;
+  const borrow = employee.borrow || 0;
 
-      // 3. Net salary
-      const netSalary = salary - (deductionLate + deductionAbsent + borrow);
+  const deductionLate = ((salary / 30) / 120) * totals.minutesLateOnArrival;
+  const missingPunches = totals.missingInPunches + totals.missingOutPunches;
+  const deductionAbsent = (salary / 30) * (absentDays + Math.floor(missingPunches / 2));
+  const netSalary = salary - (deductionLate + deductionAbsent + borrow);
 
-      // Now return everything together
-      return {
-        totalDays: fullDays + partialDays + absentDays,
-        fullDays,
-        partialDays,
-        absentDays,
-        details,
-        totals,
-        deductionLate,
-        deductionAbsent,
-        borrow,
-        netSalary
-      };
-   
+ return {
+    totalDays: fullDays + partialDays + absentDays + upcomingDays,
+    fullDays,
+    partialDays,
+    absentDays,
+    upcomingDays,
+    details,
+    totals,
+    deductionLate,
+    deductionAbsent,
+    borrow,
+    netSalary
+  };
+
 
 
 }
-
 
 
 export function formatDateTime24(date) {

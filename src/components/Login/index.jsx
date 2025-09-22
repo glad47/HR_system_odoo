@@ -61,7 +61,7 @@ function Login() {
             return;
             }
 
-            const session = { uid: odooUid, password: password.trim(), token: biotimeToken };
+            const session = { uid: parseInt(odooUid, 10), password: password.trim(), token: biotimeToken };
 
             if (remember) {
             localStorage.setItem('sessionData', JSON.stringify(session));

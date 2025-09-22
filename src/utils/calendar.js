@@ -105,3 +105,65 @@ export async function makeTheCalendarInfo() {
 
   return combined;
 }
+
+
+
+/**
+ * Group calendars into day vs night shifts based on their name.
+ * Adds shift parameters (start_time, end_time, workStart, workEnd, night_shift).
+ */
+export function groupCalendarsByShift(calendars) {
+  const dayCalendars = [];
+  const nightCalendars = [];
+
+  calendars.forEach(cal => {
+    const param = { ...cal };
+
+    if (cal.name.includes("صباحا")) {
+      dayCalendars.push(param);
+    } else if (cal.name.includes("مساءا")) {
+      nightCalendars.push(param);
+    } else {
+      // fallback to day shift
+      dayCalendars.push(param);
+    }
+  });
+
+  return { dayCalendars, nightCalendars };
+}
+
+
+
+/**
+ * Fetch all calendars from Odoo with their name and attendance_ids
+ */
+export async function fetchCalendars(session) {
+  const rawSession = localStorage.getItem("sessionData");
+  const ses = rawSession ? JSON.parse(rawSession) : null;
+
+  if (!ses || !ses.token) {
+    return [];
+  }
+
+
+  const res = await axios.post("/jsonrpc", {
+    jsonrpc: "2.0",
+    method: "call",
+    params: {
+      service: "object",
+      method: "execute_kw",
+      args: [
+        "odoo",
+        ses.uid,
+        ses.password,
+        "resource.calendar",
+        "search_read",
+        [[]], 
+        { fields: ["name", "attendance_ids"] }
+      ]
+    },
+    id: Date.now()
+  });
+
+  return res.data.result || [];
+}

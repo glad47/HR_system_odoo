@@ -9,17 +9,44 @@ import {
   getCurrentCustomMonthNight,
 } from "../../utils/dateRanges";
 
+import { groupCalendarsByShift, fetchCalendars } from "../../utils/calendar";
+import { fetchDepartments } from "../../utils/departments"
 
-const EmployeeFilter = ({ onSearch, session }) => {
+
+
+const EmployeeFilter = ({ onSearch, session, onCalculateAll }) => {
   const [form] = Form.useForm();
   const [departments, setDepartments] = useState([]);
   const [months, setMonths] = useState([]);
   const [nightMonths, setNightMonths] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(null);
   const [currentNightMonth, setCurrentNightMonth] = useState(null);
+  const [dayCalendarIds, setDayCalendarIds] = useState([]);
+  const [nightCalendarIds, setNightCalendarIds] = useState([]);
+
   const [ready, setReady] = useState(false);
 
+  useEffect(() => {
   
+  // fetch and group the calander info 
+  const fetchCalendarsOnMount = async () => {
+    try{
+      const calendars = await fetchCalendars();
+
+      const { dayCalendars, nightCalendars } = groupCalendarsByShift(calendars);
+
+      setDayCalendarIds(dayCalendars.map(c => c.id));
+      setNightCalendarIds(nightCalendars.map(c => c.id));
+    } catch (err) {
+      console.error("Failed to load calendars:", err);
+    }
+  };
+
+
+  fetchCalendarsOnMount();
+  
+}, []);
+
   // --- Load months and defaults ---
   useEffect(() => {
     const year = new Date().getFullYear();
@@ -49,39 +76,24 @@ const EmployeeFilter = ({ onSearch, session }) => {
 
   // --- Load departments ---
   useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const response = await axios.post("/jsonrpc", {
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            service: "object",
-            method: "execute_kw",
-            args: [
-              "odoo",
-              session.uid,
-              session.password,
-              "hr.department",
-              "search_read",
-              [[]],
-              { fields: ["name"] },
-            ],
-          },
-          id: 1,
-        });
-        setDepartments(response.data.result || []);
-      } catch (err) {
-        console.error("Failed to load departments:", err);
-      }
+    const fetchDepartmentsOnLoad = async () => {
+      const departments = await fetchDepartments();
+       setDepartments(departments);
     };
     if (session?.uid && session?.password) {
-      fetchDepartments();
+      fetchDepartmentsOnLoad();
     }
   }, [session]);
 
     const handleFinish = (values) => {
+    
+   
     // clone values
     const filters = { ...values };
+
+
+
+
 
     // find the selected day month range
     if (values.dayMonth) {
@@ -92,6 +104,8 @@ const EmployeeFilter = ({ onSearch, session }) => {
         }
     }
 
+
+
     // find the selected night month range
     if (values.nightMonth) {
         const selectedNight = nightMonths.find(m => m.name === values.nightMonth);
@@ -100,12 +114,32 @@ const EmployeeFilter = ({ onSearch, session }) => {
         filters.night_end_time = selectedNight.end;
         }
     }
+
+     if(values.shiftType == "day"){
+        filters.calendars_ids= dayCalendarIds
+
+    }else if(values.shiftType == "night"){
+       filters.calendars_ids= nightCalendarIds
+    }else{
+      filters.calendars_ids = null
+    }
     onSearch(filters);
     };
 
   const handleReset = () => {
     form.resetFields(); // resets back to initialValues
-    onSearch({});
+    form.setFieldsValue({
+        dayMonth: currentMonth?.name,
+        nightMonth: currentNightMonth?.name,
+    });
+    onSearch({
+        dayMonth: currentMonth?.name,
+        day_start_time: currentMonth?.start,
+        day_end_time: currentMonth?.end,
+        nightMonth: currentNightMonth?.name,
+        night_start_time: currentNightMonth?.start,
+        night_end_time: currentNightMonth?.end,
+    });
   };
 
   if (!ready) return null; // wait until defaults are ready
@@ -146,8 +180,18 @@ const EmployeeFilter = ({ onSearch, session }) => {
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={12} lg={12}>
-          <Form.Item name="dayMonth" label="Month">
+        <Col xs={24} sm={12} md={8} lg={8}>
+        <Form.Item name="shiftType" label="Shift Type">
+          <Select placeholder="Select shift type" allowClear>
+            <Select.Option value="day">Day Shift</Select.Option>
+            <Select.Option value="night">Night Shift</Select.Option>
+          </Select>
+        </Form.Item>
+      </Col>
+
+
+        <Col xs={24} sm={24} md={24} lg={24}>
+          <Form.Item name="dayMonth" label="Month" style={{ width: "50%" }} >
             <Select placeholder="Select month">
               {months.map((m) => (
                 <Select.Option key={m.name} value={m.name}>
@@ -158,8 +202,8 @@ const EmployeeFilter = ({ onSearch, session }) => {
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={12} lg={12}>
-          <Form.Item name="nightMonth" label="Month (Night Shift)">
+        <Col xs={24} sm={24} md={24} lg={24}>
+          <Form.Item name="nightMonth" label="Month (Night Shift)" style={{ width: "60%" }} >
             <Select placeholder="Select month">
               {nightMonths.map((m) => (
                 <Select.Option key={m.name} value={m.name}>
@@ -170,14 +214,27 @@ const EmployeeFilter = ({ onSearch, session }) => {
           </Form.Item>
         </Col>
 
+
+
         <Col xs={24}>
           <Row justify="end">
             <Form.Item>
               <Button type="primary" htmlType="submit">
                 Search
               </Button>
-              <Button style={{ marginLeft: 8 }} onClick={handleReset}>
+              <Button style={{ marginLeft: 8 }} onClick={() => {handleReset()}}>
                 Reset
+              </Button>
+              <Button
+                  style={{
+                    marginLeft: 8,
+                    backgroundColor: "#52c41a",
+                    borderColor: "#52c41a",
+                    color: "#fff"
+                  }}
+                  onClick={() => {onCalculateAll()}} 
+                >
+                Calculate All Salaries
               </Button>
             </Form.Item>
           </Row>
