@@ -6,6 +6,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 import { useEffect, useState } from "react";
 import { fetchDepartments } from "./utils/departments"; // adjust path as needed
+import LoanPage from './components/LoanPage';
+import HolidayPage from './components/HolidayPage';
 
 function App() {
   const [departments, setDepartments] = useState([]);
@@ -19,20 +21,11 @@ function App() {
   }, []);
 
   return (
-    <div className="App">
+    <div className="App" dir="rtl">
       <Router>
         <Routes>
           <Route path="/" element={<Login />} />
-          <Route path="/main" element={<MainPage />} />
-
-          {/* ✅ Dynamically generate department routes */}
-          {departments.map(dept => (
-            <Route
-              key={dept.id}
-              path={`/department/${dept.name}`}
-              element={<MainPage department={dept} />}
-            />
-          ))}
+          <Route path="/main" element={<MainPage />} department={null} />
         </Routes>
       </Router>
     </div>

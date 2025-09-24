@@ -156,7 +156,7 @@ const TransactionPreloader = ({ onDone }) => {
       centered
       maskClosable={false}
     >
-      <h3>Preparing your data…</h3>
+      <h3>جاري تجهيز البيانات…</h3>
       <Progress percent={percent} status="active" />
     </Modal>
   );

@@ -14,7 +14,7 @@ import { fetchDepartments } from "../../utils/departments"
 
 
 
-const EmployeeFilter = ({ onSearch, session, onCalculateAll }) => {
+const EmployeeFilter = ({ onSearch, session, onCalculateAll, department }) => {
   const [form] = Form.useForm();
   const [departments, setDepartments] = useState([]);
   const [months, setMonths] = useState([]);
@@ -146,101 +146,101 @@ const EmployeeFilter = ({ onSearch, session, onCalculateAll }) => {
 
   return (
     <Form
-      form={form}
-      layout="inline"
-      initialValues={{
-        dayMonth: currentMonth?.name,
-        nightMonth: currentNightMonth?.name,
-      }}
-      onFinish={handleFinish}
-      style={{ marginBottom: 16 }}
-    >
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={8} lg={8}>
-          <Form.Item name="name" label="Name">
-            <Input placeholder="Search by name" allowClear />
-          </Form.Item>
-        </Col>
+  form={form}
+  layout="inline"
+  initialValues={{
+    dayMonth: currentMonth?.name,
+    nightMonth: currentNightMonth?.name,
+  }}
+  onFinish={handleFinish}
+  style={{ marginBottom: 16 }}
+>
+  <Row gutter={[16, 16]}>
+    <Col xs={24} sm={12} md={8} lg={8}>
+      <Form.Item name="name" label="الاسم">
+        <Input placeholder="البحث بالاسم" allowClear />
+      </Form.Item>
+    </Col>
 
-        <Col xs={24} sm={12} md={8} lg={8}>
-          <Form.Item name="registration_number" label="ID">
-            <Input placeholder="Search by registration number" allowClear />
-          </Form.Item>
-        </Col>
+    <Col xs={24} sm={12} md={8} lg={8}>
+      <Form.Item name="registration_number" label="الرقم الوظيفي">
+        <Input placeholder="البحث بالرقم الوظيفي" allowClear />
+      </Form.Item>
+    </Col>
 
-        <Col xs={24} sm={12} md={8} lg={8}>
-          <Form.Item name="department_id" label="Department">
-            <Select placeholder="Select department" allowClear>
-              {departments.map((dept) => (
-                <Select.Option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
-
-        <Col xs={24} sm={12} md={8} lg={8}>
-        <Form.Item name="shiftType" label="Shift Type">
-          <Select placeholder="Select shift type" allowClear>
-            <Select.Option value="day">Day Shift</Select.Option>
-            <Select.Option value="night">Night Shift</Select.Option>
+    {!department ? (
+      <Col xs={24} sm={12} md={8} lg={8}>
+        <Form.Item name="department_id" label="القسم">
+          <Select placeholder="اختر القسم" allowClear>
+            {departments.map((dept) => (
+              <Select.Option key={dept.id} value={dept.id}>
+                {dept.name}
+              </Select.Option>
+            ))}
           </Select>
         </Form.Item>
       </Col>
+    ) : null}
 
+    <Col xs={24} sm={12} md={8} lg={8}>
+      <Form.Item name="shiftType" label="نوع الدوام">
+        <Select placeholder="اختر نوع الدوام" allowClear>
+          <Select.Option value="day">دوام صباحي</Select.Option>
+          <Select.Option value="night">دوام ليلي</Select.Option>
+        </Select>
+      </Form.Item>
+    </Col>
 
-        <Col xs={24} sm={24} md={24} lg={24}>
-          <Form.Item name="dayMonth" label="Month" style={{ width: "50%" }} >
-            <Select placeholder="Select month">
-              {months.map((m) => (
-                <Select.Option key={m.name} value={m.name}>
-                  {m.name} ({m.start} → {m.end})
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
+    <Col xs={24} sm={24} md={24} lg={24}>
+      <Form.Item name="dayMonth" label="الشهر" style={{ width: "50%" }}>
+        <Select placeholder="اختر الشهر">
+          {months.map((m) => (
+            <Select.Option key={m.name} value={m.name}>
+              {m.name} ({m.start} → {m.end})
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </Col>
 
-        <Col xs={24} sm={24} md={24} lg={24}>
-          <Form.Item name="nightMonth" label="Month (Night Shift)" style={{ width: "60%" }} >
-            <Select placeholder="Select month">
-              {nightMonths.map((m) => (
-                <Select.Option key={m.name} value={m.name}>
-                  {m.name} ({m.start} → {m.end})
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
+    <Col xs={24} sm={24} md={24} lg={24}>
+      <Form.Item name="nightMonth" label="الشهر (الدوام الليلي)" style={{ width: "60%" }}>
+        <Select placeholder="اختر الشهر">
+          {nightMonths.map((m) => (
+            <Select.Option key={m.name} value={m.name}>
+              {m.name} ({m.start} → {m.end})
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </Col>
 
-
-
-        <Col xs={24}>
-          <Row justify="end">
-            <Form.Item>
-              <Button type="primary" htmlType="submit">
-                Search
-              </Button>
-              <Button style={{ marginLeft: 8 }} onClick={() => {handleReset()}}>
-                Reset
-              </Button>
-              <Button
-                  style={{
-                    marginLeft: 8,
-                    backgroundColor: "#52c41a",
-                    borderColor: "#52c41a",
-                    color: "#fff"
-                  }}
-                  onClick={() => {onCalculateAll()}} 
-                >
-                Calculate All Salaries
-              </Button>
-            </Form.Item>
-          </Row>
-        </Col>
+    <Col xs={24}>
+      <Row justify="end">
+        <Form.Item>
+          <Button style={{ marginRight: 8 }} type="primary" htmlType="submit">
+            بحث
+          </Button>
+          <Button style={{ marginRight: 8 }} onClick={() => handleReset()}>
+            إعادة تعيين
+          </Button>
+          <Button
+            style={{
+              marginRgiht: 8,
+              backgroundColor: "#52c41a",
+              borderColor: "#52c41a",
+              color: "#fff",
+            }}
+            onClick={() => onCalculateAll()}
+          >
+            احتساب جميع الرواتب
+          </Button>
+        </Form.Item>
       </Row>
-    </Form>
+    </Col>
+  </Row>
+</Form>
+
   );
 };
 

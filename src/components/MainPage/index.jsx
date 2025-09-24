@@ -1,46 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { makeTheCalendarInfo } from "../../utils/calendar";
+import { trackAttendanceNightShift, trackAttendanceDayShift } from '../../utils/attendance';
+import { Breadcrumb, Layout, Menu, theme } from 'antd';
+import EmployeeTable from '../EmployeeTable';
+import { fetchDepartments, buildDepartmentMenu } from '../../utils/departments'
 import {
   DesktopOutlined,
   FileOutlined,
   PieChartOutlined,
   TeamOutlined,
   UserOutlined,
+  ApartmentOutlined,
+  DollarOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
-import { trackAttendanceNightShift, trackAttendanceDayShift } from '../../utils/attendance';
-import { Breadcrumb, Layout, Menu, theme } from 'antd';
-import EmployeeTable from '../EmployeeTable';
-import { fetchDepartments, buildDepartmentMenu } from '../../utils/departments'
+import LoanPage from '../LoanPage';
+import HolidayPage from '../HolidayPage';
+
+const staticMenuItems = [
+  getItem('لوحة التحكم', 'dashboard', <PieChartOutlined />, <HolidayPage />, false, null),
+  getItem('طلبات السلف', 'loan', <DollarOutlined />, <LoanPage />, false, null),
+  getItem('طلبات الإجازة', 'holiday', <CalendarOutlined />, <HolidayPage />, false, null),
+];
+
+
+const componentMap = {
+    dashboard: () => <HolidayPage />,
+    loan: () => <LoanPage />,
+    holiday: () => <HolidayPage />,
+    department: (key, dept) => <EmployeeTable key={key} department={dept} />
+};
+
+
+
+
 const { Header, Content, Footer, Sider } = Layout;
-function getItem(label, key, icon, children) {
+
+
+function getItem(label, key, icon, component = null, isParent = false, children = null) {
   return {
     key,
     icon,
-    children,
     label,
+    component,
+    isParent,
+    children
   };
 }
 
 
+ 
 
-const BASE_URL = "http://q.softo.live:85";
-const API_ENDPOINT = "/iclock/api/transactions/";
-const AUTH_ENDPOINT = "/api-token-auth/";
-const USERNAME = "admin";
-const PASSWORD = "Admin1234";
-const items = [
-  getItem('Option 1', '1', <PieChartOutlined />),
-  getItem('Option 2', '2', <DesktopOutlined />),
-  getItem('User', 'sub1', <UserOutlined />, [
-    getItem('Tom', '3'),
-    getItem('Bill', '4'),
-    getItem('Alex', '5'),
-  ]),
-  getItem('Team', 'sub2', <TeamOutlined />, [getItem('Team 1', '6'), getItem('Team 2', '8')]),
-  getItem('Files', '9', <FileOutlined />),
-];
-const MainPage = ({department}) => {
+const MainPage = () => {
   const [collapsed, setCollapsed] = useState(false);
   const {
     token: { colorBgContainer, borderRadiusLG },
@@ -49,14 +62,12 @@ const MainPage = ({department}) => {
   const [token, setToken] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [error, setError] = useState(null);
+  const [activeComponent, setActiveComponent] = useState(null);
+  const [depts, setDepts] = useState([])
+
 
 
   const navigate = useNavigate();
-
-
-  function getItem(label, key, icon, children) {
-  return { key, icon, children, label };
-}
 
     // const staticItems = [
     // getItem('Option 1', '1', <PieChartOutlined />),
@@ -76,27 +87,8 @@ const MainPage = ({department}) => {
     const [menuItems, setMenuItems] = useState([]);
 
     useEffect(() => {
-        console.log("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
-        console.log(department)
-    const loadDepartments = async () => {
-        const departments = await fetchDepartments();
-        const departmentMenu = buildDepartmentMenu(departments);
-        console.log("*********************************")
-        console.log(departments)
-        console.log(departmentMenu)
-        setMenuItems(departmentMenu);
-    };
 
-    loadDepartments();
-    }, []);
-
-
-  useEffect(() => {
-
-  
-
-
-    const rawSession = localStorage.getItem("sessionData");
+     const rawSession = localStorage.getItem("sessionData");
     const session = rawSession ? JSON.parse(rawSession) : null;
 
     if (!session || !session.token) {
@@ -104,11 +96,24 @@ const MainPage = ({department}) => {
       return;
     }
 
-  
+    const loadDepartments = async () => {
+    const departments = await fetchDepartments();
+    const departmentMenu = buildDepartmentMenu(departments); // returns an array
+
+    setMenuItems([...staticMenuItems, ...departmentMenu]);
+    setDepts(departments)
+    };
+
+   
+    loadDepartments();
+
+    
+    
+    
+    }, []);
+
 
   
-
-  }, []);
 
 
 
@@ -129,20 +134,20 @@ const MainPage = ({department}) => {
 
 
 const handleMenuClick = (info) => {
-  if (!info || !info.key) {
-    console.warn("Menu click received invalid info:", info);
-    return;
-  }
+  if (!info || !info.key) return;
 
   const { key } = info;
-//   console.log("Clicked menu item:", key);
 
   if (key.startsWith("dept-")) {
-    const deptName = key.replace("dept-", "");
-    navigate(`/department/${deptName}`);
+    const deptId = key.replace("dept-", "");
+    const selectedDept = depts.find(d => String(d.id) === deptId);
+    setActiveComponent(() => componentMap.department(deptId, selectedDept));
+  } else if (componentMap[key]) {
+    setActiveComponent(() => componentMap[key]());
   }
 };
-;
+
+
 
 
 
@@ -170,7 +175,7 @@ const handleMenuClick = (info) => {
       <Layout>
         <Header style={{ padding: 0, background: colorBgContainer }} />
         <Content style={{ margin: '0 16px' }}>
-          <Breadcrumb style={{ margin: '16px 0' }} items={[{ title: 'User' }, { title: 'Bill' }]} />
+          {/* <Breadcrumb style={{ margin: '16px 0' }} items={[{ title: 'User' }, { title: 'Bill' }]} /> */}
           <div
             style={{
               padding: 24,
@@ -179,11 +184,11 @@ const handleMenuClick = (info) => {
               borderRadius: borderRadiusLG,
             }}
           >
-          <EmployeeTable department={department} />
+          {activeComponent ? activeComponent : <p>Please select a menu item.</p>}
           </div>
         </Content>
         <Footer style={{ textAlign: 'center' }}>
-          Ant Design ©{new Date().getFullYear()} Created by Quu/Gladdema
+          Quu ©{new Date().getFullYear()} Created by Quu/Gladdema
         </Footer>
       </Layout>
     </Layout>

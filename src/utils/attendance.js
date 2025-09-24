@@ -204,6 +204,16 @@ export function trackAttendanceDayShift(
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
+  // Subtract overworked minutes from late arrival, but don't go below 0
+  totals.minutesLateOnArrival = Math.max(0, totals.minutesLateOnArrival - totals.minutesOverworked);
+
+  // // Decrease missing out punches, but don't go below 0
+  // totals.missingOutPunches = Math.max(0, totals.missingOutPunches - 1);
+
+  // // Decrease missing in punches, but don't go below 0
+  // totals.missingInPunches = Math.max(0, totals.missingInPunches - 1);
+
+
   // Salary calculations
   const salary = employee.salary;
   const borrow = employee.borrow || 0;
@@ -439,6 +449,18 @@ export function trackAttendanceNightShift(
 
     currentDate.setDate(currentDate.getDate() + 1);
   }
+
+  // Subtract overworked minutes from late arrival, but don't go below 0
+  totals.minutesLateOnArrival = Math.max(0, totals.minutesLateOnArrival - totals.minutesOverworked);
+
+  // Decrease missing out punches, but don't go below 0
+  // totals.missingOutPunches = Math.max(0, totals.missingOutPunches - 1);
+
+  // // Decrease missing in punches, but don't go below 0
+  // totals.missingInPunches = Math.max(0, totals.missingInPunches - 1);
+
+
+  
 
   // Salary calculations
   const salary = employee.salary;

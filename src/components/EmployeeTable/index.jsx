@@ -112,51 +112,51 @@ function getColorForDepartment(name) {
 
 
 
-    const columns = [
-    {
-        title: 'ID',
-        dataIndex: 'registration_number',
-        key: 'registration_number',
-        render: (text) => text || '—', // show dash if false/null
-      },
-      {
-        title: 'Name',
-        dataIndex: 'name',
-        key: 'name',
-      },
-      {
-        title: 'Work Schedule',
-        dataIndex: 'resource_calendar_id',
-        key: 'resource_calendar_id',
-        render: (value) => (Array.isArray(value) ? value[1] : '—'),
-      },
-      {
-        title: "Department",
-        dataIndex: "department_id",
-        key: "department_id",
-        render: (val) => {
-          if (!val || !Array.isArray(val)) return <Tag>No Department</Tag>;
-          const deptName = val[1];
-          return <Tag color={getColorForDepartment(deptName)}>{deptName}</Tag>;
-        },
-      },
-      {
-        title: "Action",
-        key: "action",
-        render: (_, record) => (
-          <Button type="link" onClick={() => showDetails(record)}>
-            More Details
-          </Button>
-        ),
-      },
-    ];
+   const columns = [
+  {
+    title: 'الرقم الوظيفي',
+    dataIndex: 'registration_number',
+    key: 'registration_number',
+    render: (text) => text || '—', // عرض شرطة إذا كانت القيمة فارغة أو null
+  },
+  {
+    title: 'الاسم',
+    dataIndex: 'name',
+    key: 'name',
+  },
+  {
+    title: 'جدول العمل',
+    dataIndex: 'resource_calendar_id',
+    key: 'resource_calendar_id',
+    render: (value) => (Array.isArray(value) ? value[1] : '—'),
+  },
+  {
+    title: 'القسم',
+    dataIndex: 'department_id',
+    key: 'department_id',
+    render: (val) => {
+      if (!val || !Array.isArray(val)) return <Tag>لا يوجد قسم</Tag>;
+      const deptName = val[1];
+      return <Tag color={getColorForDepartment(deptName)}>{deptName}</Tag>;
+    },
+  },
+  {
+    title: 'الإجراء',
+    key: 'action',
+    render: (_, record) => (
+      <Button type="link" onClick={() => showDetails(record)}>
+        تفاصيل أكثر
+      </Button>
+    ),
+  },
+];
 
   
 
   const navigate = useNavigate();
 
   useEffect(() => {
-  console.log("1")
+  // console.log("1")
   const rawSession = localStorage.getItem('sessionData');
   const ses = rawSession ? JSON.parse(rawSession) : null;
 
@@ -212,8 +212,8 @@ function getColorForDepartment(name) {
 
 
   const handleSearch = (values) => {
-    console.log("vvvvvvvvvvvvvvvvvvvvvvvvvv")
-    console.log(values)
+    // console.log("vvvvvvvvvvvvvvvvvvvvvvvvvv")
+    // console.log(values)
     setLoading(true);
     
     setDayStartTime(values.day_start_time);
@@ -229,10 +229,10 @@ function getColorForDepartment(name) {
 
 
   useEffect(() => {
-    console.log("2")
+    // console.log("2")
     setCurrentPage(1);
     fetchEmployees( session.token, session.uid, session.password, 1, pageSize);
-    console.log(filters)
+    // console.log(filters)
   }, [filters])
 
 
@@ -247,18 +247,17 @@ const getEmployeeStaticInfo = async (token, employee, calendars) =>  {
   let param = {};
   // Decide shift range
   if (calendarName.includes("صباحا")) {
-    param.start_time = dayStartTime;
-    param.end_time = dayEndTime;
-    param.workStart = "09:00:00";
-    param.workEnd = "18:00:00";
+    param.start_time = dayStartTime.split(" ")[0];
+    param.end_time = dayEndTime.split(" ")[0];
+ 
   } else if (calendarName.includes("مساءا")) {
-    param.start_time = nightStartTime;
-    param.end_time = nightEndTime;
+    param.start_time = nightStartTime.split(" ")[0];
+    param.end_time = nightEndTime.split(" ")[0];
     param.night_shift = true
   } else {
     // fallback to day shift
-    param.start_time = dayStartTime;
-    param.end_time = dayEndTime;
+    param.start_time = dayStartTime.split(" ")[0];
+    param.end_time = dayEndTime.split(" ")[0];
     param.night_shift = false
   }
 
@@ -470,6 +469,7 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
 
     const employees = response.data.result || [];
     const calenders = await makeTheCalendarInfo()
+    
  
     for (const emp of employees) {
       emp.salary = 0
@@ -514,11 +514,11 @@ const fetchEmployees = async (token, uid, password, page = 1, pageSize = 50) => 
 
 
 const fetchEmployeesAll = async (token, uid, password, page = 1, pageSize = 100) => {
-
+  var emplys = []
   try {
    const offset = (page - 1) * pageSize;
 
-   console.log(offset)
+  //  console.log(offset)
 
     // Build domain dynamically
     const domain = [];
@@ -527,7 +527,7 @@ const fetchEmployeesAll = async (token, uid, password, page = 1, pageSize = 100)
        domain.push(["department_id", "=", department.id]);
     }
 
-    
+
     domain.push(["registration_number", "!=", false]);
 
     // --- Fetch employees from Odoo
@@ -554,10 +554,12 @@ const fetchEmployeesAll = async (token, uid, password, page = 1, pageSize = 100)
       id: 1,
     });
 
-    const employees = response.data.result || [];
+    emplys = response.data.result || [];
+
+    console.log(emplys)
     const calenders = await makeTheCalendarInfo()
- 
-    for (const emp of employees) {
+    var count = 0
+    for (const emp of emplys) {
       emp.salary = 0
       const employeeCalendar = Object.values(calenders).find(
         c => c.id === emp.resource_calendar_id[0]
@@ -566,18 +568,25 @@ const fetchEmployeesAll = async (token, uid, password, page = 1, pageSize = 100)
           c => Array.isArray(c.employee_id) && c.employee_id[0] === emp.id
         );
       if (contract && employeeCalendar){
+       console.log("working")
        emp.salary = contract?.wage ?? 0;
        getEmployeeStaticInfo(token, emp,calenders)
+       console.log(emp)
+      }else{
+        console.log("not working")
+        emp.statistics = null
       }
       
     }
+    console.log("xxcxcx")
+    console.log(count)
   } catch (err) {
     console.error("Odoo fetch failed:", err);
   } finally {
     setLoading(false);
   }
 
-  return employees;
+  return emplys;
 };
 
 
@@ -589,41 +598,47 @@ const onCalculateAll = async () => {
  
   const allEmployees = await fetchEmployeesAll(session.token,session.uid, session.password);
 
+  console.log(allEmployees)
+
 
   // Build combined rows with info + stats
   const rows = allEmployees.map((emp, index) => {
     const rowIndex = index + 2; // Excel row (row 1 is header)
 
     return {
-      ID: emp.id,
-      Name: emp.name,
-      Registration: emp.registration_number,
-      Department: Array.isArray(emp.department_id) ? emp.department_id[1] : "",
-      WorkSchedule: Array.isArray(emp.resource_calendar_id) ? emp.resource_calendar_id[1] : "",
-      Salary: emp.salary ?? 0,
-      TotalDays: emp.statistics?.totalDays ?? 0,
-      FullDays: emp.statistics?.fullDays ?? 0,
-      PartialDays: emp.statistics?.partialDays ?? 0,
-      AbsentDays: emp.statistics?.absentDays ?? 0,
-      UpcomingDays: emp.statistics?.upcomingDays ?? 0,
-      MinutesLate: emp.statistics?.totals?.minutesLateOnArrival ?? 0,
-      MinutesEarlyArrival: emp.statistics?.totals?.minutesEarlyArrival ?? 0,
-      MinutesLeftEarly: emp.statistics?.totals?.minutesLeftEarly ?? 0,
-      MinutesOverworked: emp.statistics?.totals?.minutesOverworked ?? 0,
-      MissingInPunches: emp.statistics?.totals?.missingInPunches ?? 0,
-      MissingOutPunches: emp.statistics?.totals?.missingOutPunches ?? 0,
-      LateArrivalsCount: emp.statistics?.totals?.arrivedLateCount ?? 0,
-      LeftEarlyCount: emp.statistics?.totals?.leftEarlyCount ?? 0,
-      OverworkedCount: emp.statistics?.totals?.overworkedCount ?? 0,
-      Borrow: emp.statistics?.borrow ?? 0,
-      // Formulas: reference the right columns by letter
-      DeductionLate: { f: `((F${rowIndex}/30)/120)*L${rowIndex}` }, 
-      // Salary in F, MinutesLate in L
-      DeductionAbsent: { f: `(F${rowIndex}/30)*(J${rowIndex}+INT((P${rowIndex}+Q${rowIndex})/2))` },
-      // Salary in F, AbsentDays in K, MissingInPunches in N, MissingOutPunches in O
-      NetSalary: { f: `F${rowIndex}-V${rowIndex}-W${rowIndex}-U${rowIndex}` }
-      // Salary in F, DeductionLate in S, DeductionAbsent in T, Borrow in Q
-    };
+        المعرف: emp.id,
+        الاسم: emp.name,
+        الرقم_الوظيفي: emp.registration_number,
+        القسم: Array.isArray(emp.department_id) ? emp.department_id[1] : "",
+        جدول_العمل: Array.isArray(emp.resource_calendar_id) ? emp.resource_calendar_id[1] : "",
+        الراتب: emp.salary ?? 0,
+        إجمالي_الأيام: emp.statistics?.totalDays ?? 0,
+        الأيام_الكاملة: emp.statistics?.fullDays ?? 0,
+        ايام_نسيان_بصمة_الدخول_والخروج: emp.statistics?.partialDays ?? 0,
+        أيام_الغياب: emp.statistics?.absentDays ?? 0,
+        الأيام_القادمة: emp.statistics?.upcomingDays ?? 0,
+        دقائق_التأخير: emp.statistics?.totals?.minutesLateOnArrival ?? 0,
+        دقائق_الوصول_المبكر: emp.statistics?.totals?.minutesEarlyArrival ?? 0,
+        دقائق_المغادرة_المبكرة: emp.statistics?.totals?.minutesLeftEarly ?? 0,
+        دقائق_العمل_الإضافي: emp.statistics?.totals?.minutesOverworked ?? 0,
+        بصمات_الدخول_المفقودة: emp.statistics?.totals?.missingInPunches ?? 0,
+        بصمات_الخروج_المفقودة: emp.statistics?.totals?.missingOutPunches ?? 0,
+        عدد_مرات_التأخير: emp.statistics?.totals?.arrivedLateCount ?? 0,
+        عدد_مرات_المغادرة_المبكرة: emp.statistics?.totals?.leftEarlyCount ?? 0,
+        عدد_مرات_العمل_الإضافي: emp.statistics?.totals?.overworkedCount ?? 0,
+        السلف: emp.statistics?.borrow ?? 0,
+
+        // الصيغ الحسابية: الإشارة إلى الأعمدة حسب الحرف
+        خصم_التأخير: { f: `((F${rowIndex}/30)/120)*L${rowIndex}` }, 
+        // الراتب في F، دقائق التأخير في L
+
+        خصم_الغياب: { f: `(F${rowIndex}/30)*(J${rowIndex}+INT((P${rowIndex}+Q${rowIndex})/2))` },
+        // الراتب في F، أيام الغياب في K، بصمات الدخول في N، بصمات الخروج في O
+
+        صافي_الراتب: { f: `F${rowIndex}-V${rowIndex}-W${rowIndex}-U${rowIndex}` }
+        // الراتب في F، خصم التأخير في S، خصم الغياب في T، السلف في Q
+      };
+
   });
 
   // Convert to worksheet
@@ -651,7 +666,7 @@ const onCalculateAll = async () => {
 
   return (
   <>
-     <EmployeeFilter onSearch={handleSearch} session={session} onCalculateAll={onCalculateAll} />
+     <EmployeeFilter department={department} onSearch={handleSearch} session={session} onCalculateAll={onCalculateAll} />
     
       <Table
         columns={columns}
